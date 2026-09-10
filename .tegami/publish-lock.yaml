@@ -1,0 +1,13 @@
+core:changelogs:
+  - content: "---\npackages:\n  opencode-codex-control:\n    type: minor\n---\n\n## Add Codex Computer Use and Chrome tools\n\nAn OpenCode V2 plugin that exposes Codex Computer Use (`computer_use.*`) and\nChrome (`chrome.*`) as native tools by bridging `codex app-server` and the\nbundled `node_repl` `js` tool. Chrome targets the current `ax`/`playwright` API.\n\nOne app-server connection is created lazily on the first tool call and closed\non unload; calls are serialized so concurrent sessions cannot interleave\ndesktop or browser actions. The plugin has no runtime dependencies.\n"
+    filename: 2026-09-10-codex-control.md
+    v: 0.0.0
+core:packages:
+  - changelogIds:
+      - 2026-09-10-codex-control.md
+    id: npm:opencode-codex-control
+    updated: true
+npm:mark-latest:
+  - id: npm:opencode-codex-control
+npm:packages:
+  - id: npm:opencode-codex-control
