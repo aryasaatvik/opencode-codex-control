@@ -1,0 +1,24 @@
+# NOTICE
+
+This project is licensed under the MIT License (see `LICENSE`). It includes
+code adapted from a third party, reproduced here with its license.
+
+## Executor
+
+Portions of this project are derived from **Executor**
+(<https://github.com/RhysSullivan/executor>), which is licensed under the MIT
+License, Copyright (c) 2026 Rhys Sullivan. The full license text is in
+`LICENSE-EXECUTOR`.
+
+Specifically, these files adapt Executor's MCP plugin SDK
+(`packages/plugins/mcp/src/sdk/`):
+
+| This project                    | Derived from Executor            |
+| ------------------------------- | -------------------------------- |
+| `src/tools/computer-use.ts`     | `codex-sky-tools.ts`             |
+| `src/tools/chrome.ts`           | `codex-browser-tools.ts`         |
+| `src/codex/repl.ts`             | `codex-repl.ts`                  |
+| `src/codex/permissions.ts`      | `codex-permissions.ts`           |
+
+The Chrome surface was retargeted to the current Chrome plugin API (the `ax`
+and `playwright` namespaces) rather than Executor's original `dom_cua` surface.
