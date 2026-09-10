@@ -1,9 +1,6 @@
----
-packages:
-  "opencode-codex-control": minor
----
+## opencode-codex-control@0.1.0
 
-## Add Codex Computer Use and Chrome tools
+### Add Codex Computer Use and Chrome tools
 
 An OpenCode V2 plugin that exposes Codex Computer Use (`computer_use.*`) and
 Chrome (`chrome.*`) as native tools by bridging `codex app-server` and the
