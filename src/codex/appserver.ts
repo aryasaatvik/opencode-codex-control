@@ -21,6 +21,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import { permissionFailure, permissionFailureMessage } from "./permissions";
+import { TurnTracker } from "./turn-tracker";
 
 export interface ElicitationRequest {
   readonly message: string;
@@ -101,7 +102,7 @@ export class CodexAppServer {
   #queue: Promise<unknown> = Promise.resolve();
   /** One turn id shared by every call until the turn is ended, mirroring
    *  Codex's single `turn_id` per prompt rather than one per call. */
-  #turnId: string | undefined;
+  readonly #turns = new TurnTracker();
   readonly #pending = new Map<number, Pending>();
 
   constructor(config: CodexAppServerConfig) {
@@ -191,7 +192,7 @@ export class CodexAppServer {
   ): Promise<ToolCallResult> {
     await this.ensureReady();
     const timeoutMs = options?.timeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
-    const turnId = this.#ensureTurnId();
+    const turnId = this.#turns.current();
     return this.#serialize(async () => {
       const reply = await this.#request(
         "mcpServer/tool/call",
@@ -206,10 +207,6 @@ export class CodexAppServer {
       );
       return normalizeToolCall(reply);
     });
-  }
-
-  #ensureTurnId(): string {
-    return (this.#turnId ??= randomUUID());
   }
 
   /**
@@ -241,35 +238,41 @@ export class CodexAppServer {
    * A no-op when no turn is active, so it is safe to call on every turn end.
    */
   async endTurn(): Promise<void> {
-    const turnId = this.#turnId;
-    if (turnId === undefined || this.#threadId === undefined || this.#closed) return;
-    this.#turnId = undefined;
-    try {
-      await this.#serialize(async () => {
-        await this.#request(
-          "mcpServer/tool/call",
-          {
-            threadId: this.#threadId,
-            server: "node_repl",
-            tool: "turn_ended",
-            arguments: {
-              hook_event_name: "Stop",
-              session_id: this.#sessionId ?? this.#threadId,
-              turn_id: turnId,
+    if (this.#threadId === undefined || this.#closed) return;
+    // Claim the ids synchronously so a call that arrives while these releases
+    // are in flight starts its own turn instead of reusing one of them.
+    const turnIds = this.#turns.take();
+    const failed: string[] = [];
+    let lastError: unknown;
+    for (const turnId of turnIds) {
+      try {
+        await this.#serialize(async () => {
+          await this.#request(
+            "mcpServer/tool/call",
+            {
+              threadId: this.#threadId,
+              server: "node_repl",
+              tool: "turn_ended",
+              arguments: {
+                hook_event_name: "Stop",
+                session_id: this.#sessionId ?? this.#threadId,
+                turn_id: turnId,
+              },
+              _meta: this.#requestMeta(turnId),
             },
-            _meta: this.#requestMeta(turnId),
-          },
-          DEFAULT_CALL_TIMEOUT_MS,
-        );
-      });
-    } catch (error) {
-      // Keep the turn so a later release can retry: `turn_ended` is idempotent,
-      // and without this an RPC failure or timeout would drop the only id that
-      // identifies the turn, leaving the session to outlive it. A new turn may
-      // already have claimed the slot, so only restore when it is still empty.
-      this.#turnId ??= turnId;
-      throw error;
+            DEFAULT_CALL_TIMEOUT_MS,
+          );
+        });
+      } catch (error) {
+        // A failed release would otherwise lose the only id that names the
+        // turn, leaving its session alive; retain it so a later release retries.
+        // Safe because `turn_ended` is idempotent for the same session and turn.
+        failed.push(turnId);
+        lastError = error;
+      }
     }
+    this.#turns.retain(failed);
+    if (lastError !== undefined) throw lastError;
   }
 
   /** Run one JavaScript program in Codex's `node_repl`. */
