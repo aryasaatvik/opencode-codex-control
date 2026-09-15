@@ -21,6 +21,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import { permissionFailure, permissionFailureMessage } from "./permissions";
+import { TurnTracker } from "./turn-tracker";
 
 export interface ElicitationRequest {
   readonly message: string;
@@ -49,9 +50,18 @@ export interface CodexAppServerConfig {
   readonly onLog?: (message: string) => void;
 }
 
+/** An image the tool emitted, shaped as an OpenCode file content part. */
+export interface ToolAttachment {
+  readonly type: "file";
+  readonly uri: string;
+  readonly mime: string;
+}
+
 export interface ToolCallResult {
   /** The joined text content of the tool call. */
   readonly text: string;
+  /** Image content blocks, as OpenCode file parts (data URIs, or a file URL). */
+  readonly attachments: ReadonlyArray<ToolAttachment>;
   readonly isError: boolean;
   readonly structuredContent?: unknown;
   readonly meta?: unknown;
@@ -72,6 +82,10 @@ interface RpcMessage {
 
 const INITIALIZE_TIMEOUT_MS = 30_000;
 const DEFAULT_CALL_TIMEOUT_MS = 60_000;
+/** Retry at most this many releases per turn end, so a backed-up queue can
+ *  never make one cleanup (and the calls queued behind it) take unboundedly
+ *  long; the rest wait for the next turn end. */
+const MAX_RELEASES_PER_CALL = 8;
 
 /** `mcpServer/startupStatus/updated` — Codex reports every server it runs. */
 const STARTUP_STATUS_METHOD = "mcpServer/startupStatus/updated";
@@ -83,10 +97,16 @@ export class CodexAppServer {
   #stderrTail = "";
   #nextId = 1;
   #threadId: string | undefined;
+  /** The thread's session id, which Codex's Computer Use and Chrome clients read
+   *  from request metadata to scope their application sessions. */
+  #sessionId: string | undefined;
   #starting: Promise<void> | undefined;
   #ready = false;
   #closed = false;
   #queue: Promise<unknown> = Promise.resolve();
+  /** One turn id shared by every call until the turn is ended, mirroring
+   *  Codex's single `turn_id` per prompt rather than one per call. */
+  readonly #turns = new TurnTracker();
   readonly #pending = new Map<number, Pending>();
 
   constructor(config: CodexAppServerConfig) {
@@ -149,16 +169,25 @@ export class CodexAppServer {
       // any tool that asks.
       { sessionStartSource: "startup", approvalPolicy: "on-request" },
       INITIALIZE_TIMEOUT_MS,
-    )) as { thread?: { id?: string } } | undefined;
+    )) as { thread?: { id?: string; session_id?: string } } | undefined;
     const threadId = started?.thread?.id;
     if (typeof threadId !== "string") {
       throw new Error("Codex app-server returned no thread id from thread/start.");
     }
     this.#threadId = threadId;
+    this.#sessionId =
+      typeof started?.thread?.session_id === "string" ? started.thread.session_id : threadId;
     this.#ready = true;
   }
 
-  /** Call one tool on one Codex MCP server. */
+  /**
+   * Call one tool on one Codex MCP server.
+   *
+   * `_meta` carries Codex turn metadata because the Chrome client refuses to
+   * run without it. The turn id is stable for the whole OpenCode turn so the
+   * Computer Use and Chrome sessions stay alive across many calls, exactly as
+   * they do inside one Codex turn.
+   */
   async callTool(
     server: string,
     tool: string,
@@ -167,6 +196,7 @@ export class CodexAppServer {
   ): Promise<ToolCallResult> {
     await this.ensureReady();
     const timeoutMs = options?.timeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
+    const turnId = this.#turns.current();
     return this.#serialize(async () => {
       const reply = await this.#request(
         "mcpServer/tool/call",
@@ -175,21 +205,83 @@ export class CodexAppServer {
           server,
           tool,
           arguments: args ?? {},
-          // Codex stamps a REPL call with the turn that issued it, and the
-          // Chrome client refuses to run without it. This bridge starts no
-          // turns, so it supplies the same shape: the pooled thread is the
-          // session, each call is its own turn.
-          _meta: {
-            "x-codex-turn-metadata": {
-              session_id: this.#threadId,
-              turn_id: randomUUID(),
-            },
-          },
+          _meta: this.#requestMeta(turnId),
         },
         timeoutMs,
       );
       return normalizeToolCall(reply);
     });
+  }
+
+  /**
+   * Codex's MCP request metadata. The Computer Use and Chrome clients read
+   * `nodeRepl.requestMeta` and key their application sessions on `sessionId`
+   * and `threadId`, so a call without them is scoped to the wrong (or no)
+   * session — which is how a user stop can appear to stick to an app.
+   */
+  #requestMeta(turnId: string): Record<string, unknown> {
+    const sessionId = this.#sessionId ?? this.#threadId;
+    return {
+      callId: randomUUID(),
+      sessionId,
+      threadId: this.#threadId,
+      "x-codex-turn-metadata": {
+        session_id: sessionId,
+        thread_id: this.#threadId,
+        turn_id: turnId,
+      },
+    };
+  }
+
+  /**
+   * End the current turn, releasing the Computer Use and Chrome sessions.
+   *
+   * This mirrors Codex's `Stop`/`Interrupt` hooks, which call the hidden
+   * `node_repl` `turn_ended` tool with the turn's session and turn ids.
+   * Without it the sessions outlive their use and the user has to stop them.
+   * A no-op when no turn is active, so it is safe to call on every turn end.
+   */
+  async endTurn(): Promise<void> {
+    if (this.#threadId === undefined || this.#closed) return;
+    // Claim the ids synchronously so a call that arrives while these releases
+    // are in flight starts its own turn instead of reusing one of them.
+    const turnIds = this.#turns.take();
+    const attempted = turnIds.slice(0, MAX_RELEASES_PER_CALL);
+    const deferred = turnIds.slice(MAX_RELEASES_PER_CALL);
+    const failed: string[] = [];
+    let lastError: unknown;
+    for (const turnId of attempted) {
+      try {
+        await this.#serialize(async () => {
+          await this.#request(
+            "mcpServer/tool/call",
+            {
+              threadId: this.#threadId,
+              server: "node_repl",
+              tool: "turn_ended",
+              arguments: {
+                hook_event_name: "Stop",
+                session_id: this.#sessionId ?? this.#threadId,
+                turn_id: turnId,
+              },
+              _meta: this.#requestMeta(turnId),
+            },
+            DEFAULT_CALL_TIMEOUT_MS,
+          );
+        });
+      } catch (error) {
+        // A failed release would otherwise lose the only id that names the
+        // turn, leaving its session alive; retain it so a later release retries.
+        // Safe because `turn_ended` is idempotent for the same session and turn.
+        failed.push(turnId);
+        lastError = error;
+      }
+    }
+    // Retry the failed ids first (they are the oldest), then the ones this call
+    // did not attempt, so the backlog drains oldest-first across calls.
+    this.#turns.retain(failed);
+    this.#turns.retain(deferred);
+    if (lastError !== undefined) throw lastError;
   }
 
   /** Run one JavaScript program in Codex's `node_repl`. */
@@ -379,15 +471,33 @@ const normalizeToolCall = (raw: unknown): ToolCallResult => {
     _meta?: unknown;
   };
   const content = Array.isArray(result.content) ? result.content : [];
-  const text = content
-    .map((block) => {
-      const b = block as { text?: unknown };
-      return typeof b.text === "string" ? b.text : "";
-    })
-    .filter((value) => value.length > 0)
-    .join("\n");
+  const texts: string[] = [];
+  const attachments: ToolAttachment[] = [];
+  for (const block of content) {
+    const b = block as {
+      type?: unknown;
+      text?: unknown;
+      data?: unknown;
+      mimeType?: unknown;
+      url?: unknown;
+    };
+    if (typeof b.text === "string" && b.text.length > 0) {
+      texts.push(b.text);
+      continue;
+    }
+    // The node_repl `js` tool emits images via `nodeRepl.emitImage`. Preserve
+    // them: a screenshot the model cannot see is worse than no tool at all.
+    if (b.type !== "image") continue;
+    const mime = typeof b.mimeType === "string" ? b.mimeType : "image/png";
+    if (typeof b.data === "string") {
+      attachments.push({ type: "file", uri: `data:${mime};base64,${b.data}`, mime });
+    } else if (typeof b.url === "string") {
+      attachments.push({ type: "file", uri: b.url, mime });
+    }
+  }
   return {
-    text,
+    text: texts.join("\n"),
+    attachments,
     isError: result.isError === true,
     ...(result.structuredContent === undefined
       ? {}
