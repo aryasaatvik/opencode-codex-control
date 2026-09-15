@@ -29,14 +29,20 @@ describe("TurnTracker", () => {
     expect(turns.take()).toEqual([turn, next]);
   });
 
-  test("retain keeps every failed id and dedupes repeats", () => {
+  test("retain keeps failed ids oldest-first and dedupes repeats", () => {
     const turns = new TurnTracker();
     turns.retain(["a", "a", "b"]);
     expect(turns.take()).toEqual(["a", "b"]);
+  });
 
-    // Many failures are all kept, oldest first, so none is dropped unretried.
-    const many = Array.from({ length: 20 }, (_, index) => `t${index}`);
+  test("retain bounds the backlog so retry cost cannot grow without limit", () => {
+    const turns = new TurnTracker();
+    const many = Array.from({ length: 40 }, (_, index) => `t${index}`);
     turns.retain(many);
-    expect(turns.take()).toEqual(many);
+    const taken = turns.take();
+    expect(taken).toHaveLength(32);
+    // The newest are kept; the overflow is the oldest.
+    expect(taken.at(-1)).toBe("t39");
+    expect(taken).not.toContain("t0");
   });
 });

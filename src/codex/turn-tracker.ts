@@ -8,6 +8,14 @@
 
 import { randomUUID } from "node:crypto";
 
+/**
+ * Cap the retry backlog so a bridge that keeps failing releases cannot grow it
+ * without bound. A release that has failed this many times is not going to
+ * succeed for the oldest entries, and their turn-scoped sessions are cleared
+ * when the app-server restarts.
+ */
+const MAX_RETAINED = 32;
+
 export class TurnTracker {
   #active: string | undefined;
   #unreleased: string[] = [];
@@ -37,6 +45,13 @@ export class TurnTracker {
   retain(ids: readonly string[]): void {
     for (const id of ids) {
       if (!this.#unreleased.includes(id)) this.#unreleased.push(id);
+    }
+    const overflow = this.#unreleased.length - MAX_RETAINED;
+    if (overflow > 0) {
+      this.#unreleased.splice(0, overflow);
+      console.warn(
+        `[codex-control] dropped ${overflow} unreleased turn id(s); the bridge has not accepted releases`,
+      );
     }
   }
 }

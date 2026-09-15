@@ -82,6 +82,10 @@ interface RpcMessage {
 
 const INITIALIZE_TIMEOUT_MS = 30_000;
 const DEFAULT_CALL_TIMEOUT_MS = 60_000;
+/** Retry at most this many releases per turn end, so a backed-up queue can
+ *  never make one cleanup (and the calls queued behind it) take unboundedly
+ *  long; the rest wait for the next turn end. */
+const MAX_RELEASES_PER_CALL = 8;
 
 /** `mcpServer/startupStatus/updated` — Codex reports every server it runs. */
 const STARTUP_STATUS_METHOD = "mcpServer/startupStatus/updated";
@@ -242,9 +246,11 @@ export class CodexAppServer {
     // Claim the ids synchronously so a call that arrives while these releases
     // are in flight starts its own turn instead of reusing one of them.
     const turnIds = this.#turns.take();
+    const attempted = turnIds.slice(0, MAX_RELEASES_PER_CALL);
+    const deferred = turnIds.slice(MAX_RELEASES_PER_CALL);
     const failed: string[] = [];
     let lastError: unknown;
-    for (const turnId of turnIds) {
+    for (const turnId of attempted) {
       try {
         await this.#serialize(async () => {
           await this.#request(
@@ -271,7 +277,10 @@ export class CodexAppServer {
         lastError = error;
       }
     }
+    // Retry the failed ids first (they are the oldest), then the ones this call
+    // did not attempt, so the backlog drains oldest-first across calls.
     this.#turns.retain(failed);
+    this.#turns.retain(deferred);
     if (lastError !== undefined) throw lastError;
   }
 
