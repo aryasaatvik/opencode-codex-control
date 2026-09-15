@@ -244,23 +244,32 @@ export class CodexAppServer {
     const turnId = this.#turnId;
     if (turnId === undefined || this.#threadId === undefined || this.#closed) return;
     this.#turnId = undefined;
-    await this.#serialize(async () => {
-      await this.#request(
-        "mcpServer/tool/call",
-        {
-          threadId: this.#threadId,
-          server: "node_repl",
-          tool: "turn_ended",
-          arguments: {
-            hook_event_name: "Stop",
-            session_id: this.#sessionId ?? this.#threadId,
-            turn_id: turnId,
+    try {
+      await this.#serialize(async () => {
+        await this.#request(
+          "mcpServer/tool/call",
+          {
+            threadId: this.#threadId,
+            server: "node_repl",
+            tool: "turn_ended",
+            arguments: {
+              hook_event_name: "Stop",
+              session_id: this.#sessionId ?? this.#threadId,
+              turn_id: turnId,
+            },
+            _meta: this.#requestMeta(turnId),
           },
-          _meta: this.#requestMeta(turnId),
-        },
-        DEFAULT_CALL_TIMEOUT_MS,
-      );
-    });
+          DEFAULT_CALL_TIMEOUT_MS,
+        );
+      });
+    } catch (error) {
+      // Keep the turn so a later release can retry: `turn_ended` is idempotent,
+      // and without this an RPC failure or timeout would drop the only id that
+      // identifies the turn, leaving the session to outlive it. A new turn may
+      // already have claimed the slot, so only restore when it is still empty.
+      this.#turnId ??= turnId;
+      throw error;
+    }
   }
 
   /** Run one JavaScript program in Codex's `node_repl`. */
