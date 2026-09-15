@@ -48,4 +48,17 @@ describe("Chrome tools", () => {
     expect(byName.get("read_page")?.needsTab).toBe(true);
     expect(byName.get("click")?.needsTab).toBe(true);
   });
+
+  test("coordinate targets are AXPoint tuples, not objects", () => {
+    const byName = new Map(CHROME_TOOLS.map((tool) => [tool.name, tool]));
+    for (const name of ["click", "scroll"]) {
+      const program = chromeProgram(byName.get(name)!, {}, "/tmp/browser-client.mjs");
+      expect(program).toContain("[__args.x ?? 0, __args.y ?? 0]");
+      expect(program).not.toContain("{ x: __args.x ?? 0, y: __args.y ?? 0 }");
+    }
+
+    const drag = chromeProgram(byName.get("drag")!, {}, "/tmp/browser-client.mjs");
+    expect(drag).toContain("[__args.from_x, __args.from_y]");
+    expect(drag).toContain("[__args.to_x, __args.to_y]");
+  });
 });
