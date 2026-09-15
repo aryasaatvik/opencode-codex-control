@@ -64,7 +64,7 @@ export const COMPUTER_USE_TOOLS: readonly ComputerUseTool[] = [
     takesArgs: true,
     screenshot: true,
     description:
-      "Read an app's current state: a screenshot URL plus its accessibility tree as text. START HERE, then act, then read again — element indexes come from this call and are only valid for the state that produced them. By default the tree is a DIFF against the previous read of this app; set `disableDiff` when you need the whole tree again. No pause is needed after an action: the runtime waits for the UI to settle before capturing. If the tree looks incomplete, read the screenshot instead of guessing.",
+      "Read an app's current state: a screenshot URL plus its accessibility tree as text. START HERE, then act, then read again — element indexes come from this call and are only valid for the state that produced them. By default the tree is a DIFF against the previous read of this app; set `disableDiff` when you need the whole tree again. No pause is needed after an action: the runtime waits for the UI to settle before capturing. If the tree looks incomplete, read the screenshot instead of guessing. A message that the app session was stopped by the user is app-scoped: other apps still work, you cannot clear it yourself, so name the blocked app and continue with another app or ask the user to re-enable it rather than treating Computer Use as unavailable.",
     inputSchema: object(
       {
         app: APP,
