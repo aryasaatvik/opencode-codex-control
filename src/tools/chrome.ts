@@ -59,12 +59,18 @@ export interface ChromeTool {
 }
 
 /** Build an `ax` target from an element index or a viewport coordinate.
- *  A coordinate is an `AXPoint` tuple (`[x, y]` in `docs/api.json`); the
- *  runtime rejects any other shape, so an object target silently fails. */
+ *  A coordinate is an `AXPoint` tuple (`[x, y]` in `docs/api.json`); the runtime
+ *  rejects any other shape, so an object target silently fails. A target with
+ *  neither an index nor both coordinates is rejected rather than defaulted to
+ *  `[0, 0]`, which would click or scroll somewhere the caller never asked for. */
 const AX_TARGET = [
+  "const __coordinate = (x, y) => {",
+  '  if (x === undefined || y === undefined) throw new Error("Provide an element_index, or both x and y");',
+  "  return [x, y];",
+  "};",
   "const __target = __args.element_index !== undefined",
   "  ? __args.element_index",
-  "  : [__args.x ?? 0, __args.y ?? 0];",
+  "  : __coordinate(__args.x, __args.y);",
 ].join("\n");
 
 export const CHROME_TOOLS: readonly ChromeTool[] = [
