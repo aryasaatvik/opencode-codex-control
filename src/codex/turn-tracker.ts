@@ -8,9 +8,6 @@
 
 import { randomUUID } from "node:crypto";
 
-/** Cap the retained backlog so a dead app-server cannot grow it without bound. */
-const MAX_RETAINED = 16;
-
 export class TurnTracker {
   #active: string | undefined;
   #unreleased: string[] = [];
@@ -32,13 +29,14 @@ export class TurnTracker {
     return ids;
   }
 
-  /** Retain ids whose release failed so a later release retries them. */
+  /**
+   * Retain ids whose release failed so a later release retries them. Every id
+   * is kept until its own release succeeds: dropping one would lose the only
+   * handle on that turn's session, leaving it alive for good.
+   */
   retain(ids: readonly string[]): void {
     for (const id of ids) {
       if (!this.#unreleased.includes(id)) this.#unreleased.push(id);
-    }
-    if (this.#unreleased.length > MAX_RETAINED) {
-      this.#unreleased.splice(0, this.#unreleased.length - MAX_RETAINED);
     }
   }
 }

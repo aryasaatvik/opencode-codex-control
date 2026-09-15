@@ -29,14 +29,14 @@ describe("TurnTracker", () => {
     expect(turns.take()).toEqual([turn, next]);
   });
 
-  test("retain dedupes and bounds the backlog", () => {
+  test("retain keeps every failed id and dedupes repeats", () => {
     const turns = new TurnTracker();
-    turns.retain(["a", "a"]);
-    expect(turns.take()).toEqual(["a"]);
+    turns.retain(["a", "a", "b"]);
+    expect(turns.take()).toEqual(["a", "b"]);
 
-    for (let index = 0; index < 20; index += 1) turns.retain([`t${index}`]);
-    const taken = turns.take();
-    expect(taken).toHaveLength(16);
-    expect(taken.at(-1)).toBe("t19");
+    // Many failures are all kept, oldest first, so none is dropped unretried.
+    const many = Array.from({ length: 20 }, (_, index) => `t${index}`);
+    turns.retain(many);
+    expect(turns.take()).toEqual(many);
   });
 });
