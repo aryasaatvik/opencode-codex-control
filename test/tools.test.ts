@@ -46,6 +46,11 @@ describe("Computer Use tools", () => {
       expect(program).toContain("nodeRepl.write(JSON.stringify(result ?? null))");
     }
   });
+
+  test("only get_app_state surfaces a screenshot", () => {
+    const flagged = COMPUTER_USE_TOOLS.filter((tool) => tool.screenshot === true);
+    expect(flagged.map((tool) => tool.name)).toEqual(["get_app_state"]);
+  });
 });
 
 describe("Chrome tools", () => {
@@ -108,5 +113,17 @@ describe("Chrome tools", () => {
 
     expect(calls["click"]).toBeUndefined();
     expect(calls["scroll"]).toBeUndefined();
+  });
+
+  test("screenshot is the only tool that surfaces a written image", () => {
+    const byName = new Map(CHROME_TOOLS.map((tool) => [tool.name, tool]));
+    const flagged = CHROME_TOOLS.filter((tool) => tool.screenshot === true);
+    expect(flagged.map((tool) => tool.name)).toEqual(["screenshot"]);
+
+    const screenshot = byName.get("screenshot");
+    expect(screenshot?.needsTab).toBe(true);
+    const program = chromeProgram(screenshot!, {}, "/tmp/browser-client.mjs");
+    expect(program).toContain("__tab.screenshot(");
+    expect(program).toContain("nodeRepl.emitImage(");
   });
 });

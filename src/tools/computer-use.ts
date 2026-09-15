@@ -45,6 +45,8 @@ export interface ComputerUseTool {
   /** The `sky` method this tool calls; `list_apps` takes no argument object. */
   readonly method: string;
   readonly takesArgs: boolean;
+  /** The result carries a screenshot URL that should surface as an image part. */
+  readonly screenshot?: boolean;
 }
 
 export const COMPUTER_USE_TOOLS: readonly ComputerUseTool[] = [
@@ -60,6 +62,7 @@ export const COMPUTER_USE_TOOLS: readonly ComputerUseTool[] = [
     name: "get_app_state",
     method: "get_app_state",
     takesArgs: true,
+    screenshot: true,
     description:
       "Read an app's current state: a screenshot URL plus its accessibility tree as text. START HERE, then act, then read again — element indexes come from this call and are only valid for the state that produced them. By default the tree is a DIFF against the previous read of this app; set `disableDiff` when you need the whole tree again. No pause is needed after an action: the runtime waits for the UI to settle before capturing. If the tree looks incomplete, read the screenshot instead of guessing.",
     inputSchema: object(

@@ -53,6 +53,8 @@ export interface ChromeTool {
   readonly inputSchema: JsonSchema;
   /** Whether the program resolves a tab before running `expression`. */
   readonly needsTab: boolean;
+  /** The result carries a path to a written screenshot that should surface as an image part. */
+  readonly screenshot?: boolean;
   /** The JS expression to await, given the caller's arguments as `__args`
    *  and (when `needsTab`) the resolved tab as `__tab`. */
   readonly expression: string;
@@ -145,6 +147,32 @@ export const CHROME_TOOLS: readonly ChromeTool[] = [
     inputSchema: object({ tab_id: TAB_ID }, []),
     needsTab: true,
     expression: "await (async () => ({ dom: await __tab.playwright.domSnapshot() }))()",
+  },
+  {
+    name: "screenshot",
+    description:
+      "Capture the tab as an image and return it. Use when visual confirmation matters or the accessibility state is incomplete — not as the default state check. Set `full_page` to capture beyond the viewport.",
+    inputSchema: object(
+      {
+        tab_id: TAB_ID,
+        full_page: {
+          type: "boolean",
+          description: "Capture the full page instead of just the viewport.",
+        },
+      },
+      [],
+    ),
+    needsTab: true,
+    screenshot: true,
+    // The REPL sandbox refuses filesystem writes, so the image is emitted
+    // straight to the host via `nodeRepl.emitImage` rather than written to disk.
+    expression: [
+      "await (async () => {",
+      "  const bytes = await __tab.screenshot(__args.full_page ? { fullPage: true } : undefined);",
+      '  await nodeRepl.emitImage({ bytes, mimeType: "image/png" });',
+      "  return { bytes: bytes.length };",
+      "})()",
+    ].join("\n"),
   },
   {
     name: "click",

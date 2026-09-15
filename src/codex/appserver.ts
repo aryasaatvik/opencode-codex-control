@@ -49,9 +49,18 @@ export interface CodexAppServerConfig {
   readonly onLog?: (message: string) => void;
 }
 
+/** An image the tool emitted, shaped as an OpenCode file content part. */
+export interface ToolAttachment {
+  readonly type: "file";
+  readonly uri: string;
+  readonly mime: string;
+}
+
 export interface ToolCallResult {
   /** The joined text content of the tool call. */
   readonly text: string;
+  /** Image content blocks, as OpenCode file parts (data URIs, or a file URL). */
+  readonly attachments: ReadonlyArray<ToolAttachment>;
   readonly isError: boolean;
   readonly structuredContent?: unknown;
   readonly meta?: unknown;
@@ -87,6 +96,9 @@ export class CodexAppServer {
   #ready = false;
   #closed = false;
   #queue: Promise<unknown> = Promise.resolve();
+  /** One turn id shared by every call until the turn is ended, mirroring
+   *  Codex's single `turn_id` per prompt rather than one per call. */
+  #turnId: string | undefined;
   readonly #pending = new Map<number, Pending>();
 
   constructor(config: CodexAppServerConfig) {
@@ -158,7 +170,14 @@ export class CodexAppServer {
     this.#ready = true;
   }
 
-  /** Call one tool on one Codex MCP server. */
+  /**
+   * Call one tool on one Codex MCP server.
+   *
+   * `_meta` carries Codex turn metadata because the Chrome client refuses to
+   * run without it. The turn id is stable for the whole OpenCode turn so the
+   * Computer Use and Chrome sessions stay alive across many calls, exactly as
+   * they do inside one Codex turn.
+   */
   async callTool(
     server: string,
     tool: string,
@@ -167,6 +186,7 @@ export class CodexAppServer {
   ): Promise<ToolCallResult> {
     await this.ensureReady();
     const timeoutMs = options?.timeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
+    const turnId = this.#ensureTurnId();
     return this.#serialize(async () => {
       const reply = await this.#request(
         "mcpServer/tool/call",
@@ -175,20 +195,48 @@ export class CodexAppServer {
           server,
           tool,
           arguments: args ?? {},
-          // Codex stamps a REPL call with the turn that issued it, and the
-          // Chrome client refuses to run without it. This bridge starts no
-          // turns, so it supplies the same shape: the pooled thread is the
-          // session, each call is its own turn.
-          _meta: {
-            "x-codex-turn-metadata": {
-              session_id: this.#threadId,
-              turn_id: randomUUID(),
-            },
-          },
+          _meta: { "x-codex-turn-metadata": { session_id: this.#threadId, turn_id: turnId } },
         },
         timeoutMs,
       );
       return normalizeToolCall(reply);
+    });
+  }
+
+  #ensureTurnId(): string {
+    return (this.#turnId ??= randomUUID());
+  }
+
+  /**
+   * End the current turn, releasing the Computer Use and Chrome sessions.
+   *
+   * This mirrors Codex's `Stop`/`Interrupt` hooks, which call the hidden
+   * `node_repl` `turn_ended` tool with the turn's session and turn ids.
+   * Without it the sessions outlive their use and the user has to stop them.
+   * A no-op when no turn is active, so it is safe to call on every turn end.
+   */
+  async endTurn(): Promise<void> {
+    const turnId = this.#turnId;
+    if (turnId === undefined || this.#threadId === undefined || this.#closed) return;
+    this.#turnId = undefined;
+    await this.#serialize(async () => {
+      await this.#request(
+        "mcpServer/tool/call",
+        {
+          threadId: this.#threadId,
+          server: "node_repl",
+          tool: "turn_ended",
+          arguments: {
+            hook_event_name: "Stop",
+            session_id: this.#threadId,
+            turn_id: turnId,
+          },
+          _meta: {
+            "x-codex-turn-metadata": { session_id: this.#threadId, turn_id: turnId },
+          },
+        },
+        DEFAULT_CALL_TIMEOUT_MS,
+      );
     });
   }
 
@@ -379,15 +427,33 @@ const normalizeToolCall = (raw: unknown): ToolCallResult => {
     _meta?: unknown;
   };
   const content = Array.isArray(result.content) ? result.content : [];
-  const text = content
-    .map((block) => {
-      const b = block as { text?: unknown };
-      return typeof b.text === "string" ? b.text : "";
-    })
-    .filter((value) => value.length > 0)
-    .join("\n");
+  const texts: string[] = [];
+  const attachments: ToolAttachment[] = [];
+  for (const block of content) {
+    const b = block as {
+      type?: unknown;
+      text?: unknown;
+      data?: unknown;
+      mimeType?: unknown;
+      url?: unknown;
+    };
+    if (typeof b.text === "string" && b.text.length > 0) {
+      texts.push(b.text);
+      continue;
+    }
+    // The node_repl `js` tool emits images via `nodeRepl.emitImage`. Preserve
+    // them: a screenshot the model cannot see is worse than no tool at all.
+    if (b.type !== "image") continue;
+    const mime = typeof b.mimeType === "string" ? b.mimeType : "image/png";
+    if (typeof b.data === "string") {
+      attachments.push({ type: "file", uri: `data:${mime};base64,${b.data}`, mime });
+    } else if (typeof b.url === "string") {
+      attachments.push({ type: "file", uri: b.url, mime });
+    }
+  }
   return {
-    text,
+    text: texts.join("\n"),
+    attachments,
     isError: result.isError === true,
     ...(result.structuredContent === undefined
       ? {}
