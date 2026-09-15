@@ -92,6 +92,9 @@ export class CodexAppServer {
   #stderrTail = "";
   #nextId = 1;
   #threadId: string | undefined;
+  /** The thread's session id, which Codex's Computer Use and Chrome clients read
+   *  from request metadata to scope their application sessions. */
+  #sessionId: string | undefined;
   #starting: Promise<void> | undefined;
   #ready = false;
   #closed = false;
@@ -161,12 +164,14 @@ export class CodexAppServer {
       // any tool that asks.
       { sessionStartSource: "startup", approvalPolicy: "on-request" },
       INITIALIZE_TIMEOUT_MS,
-    )) as { thread?: { id?: string } } | undefined;
+    )) as { thread?: { id?: string; session_id?: string } } | undefined;
     const threadId = started?.thread?.id;
     if (typeof threadId !== "string") {
       throw new Error("Codex app-server returned no thread id from thread/start.");
     }
     this.#threadId = threadId;
+    this.#sessionId =
+      typeof started?.thread?.session_id === "string" ? started.thread.session_id : threadId;
     this.#ready = true;
   }
 
@@ -195,7 +200,7 @@ export class CodexAppServer {
           server,
           tool,
           arguments: args ?? {},
-          _meta: { "x-codex-turn-metadata": { session_id: this.#threadId, turn_id: turnId } },
+          _meta: this.#requestMeta(turnId),
         },
         timeoutMs,
       );
@@ -205,6 +210,26 @@ export class CodexAppServer {
 
   #ensureTurnId(): string {
     return (this.#turnId ??= randomUUID());
+  }
+
+  /**
+   * Codex's MCP request metadata. The Computer Use and Chrome clients read
+   * `nodeRepl.requestMeta` and key their application sessions on `sessionId`
+   * and `threadId`, so a call without them is scoped to the wrong (or no)
+   * session — which is how a user stop can appear to stick to an app.
+   */
+  #requestMeta(turnId: string): Record<string, unknown> {
+    const sessionId = this.#sessionId ?? this.#threadId;
+    return {
+      callId: randomUUID(),
+      sessionId,
+      threadId: this.#threadId,
+      "x-codex-turn-metadata": {
+        session_id: sessionId,
+        thread_id: this.#threadId,
+        turn_id: turnId,
+      },
+    };
   }
 
   /**
@@ -228,12 +253,10 @@ export class CodexAppServer {
           tool: "turn_ended",
           arguments: {
             hook_event_name: "Stop",
-            session_id: this.#threadId,
+            session_id: this.#sessionId ?? this.#threadId,
             turn_id: turnId,
           },
-          _meta: {
-            "x-codex-turn-metadata": { session_id: this.#threadId, turn_id: turnId },
-          },
+          _meta: this.#requestMeta(turnId),
         },
         DEFAULT_CALL_TIMEOUT_MS,
       );
