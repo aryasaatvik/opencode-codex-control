@@ -19,22 +19,11 @@ import {
   Controller,
   readSettings,
 } from "./controller";
+import { watchTurnEnd } from "./lifecycle";
 import { CHROME_TOOLS } from "./tools/chrome";
 import { COMPUTER_USE_TOOLS } from "./tools/computer-use";
 
 type PluginContext = PluginNamespace.Context;
-
-/**
- * OpenCode events that mark the end of a turn, where Codex releases its
- * Computer Use and Chrome sessions (its `Stop`/`Interrupt` hooks). The bridge
- * dedupes them by no-opping when no turn is active.
- */
-const TURN_END_EVENTS: ReadonlySet<string> = new Set([
-  "session.execution.succeeded",
-  "session.execution.failed",
-  "session.execution.interrupted",
-  "session.idle",
-]);
 
 const STOP_TOOL_INPUT = {
   type: "object",
@@ -114,20 +103,13 @@ const plugin = {
     // never break the session, so errors are logged and dropped.
     const releases = new AbortController();
     if (settings.computerUse || settings.chrome) {
-      void (async () => {
-        try {
-          for await (const event of ctx.event.subscribe({ signal: releases.signal })) {
-            if (!TURN_END_EVENTS.has(event.type)) continue;
-            try {
-              await controller.releaseTurn();
-            } catch (error) {
-              console.error(`[codex-control] turn release failed: ${String(error)}`);
-            }
-          }
-        } catch {
-          // The subscription aborts on unload; nothing to report.
-        }
-      })();
+      void watchTurnEnd(
+        ctx.event.subscribe({ signal: releases.signal }),
+        () => controller.releaseTurn(),
+        (error) => console.error(`[codex-control] turn release failed: ${String(error)}`),
+      ).catch(() => {
+        // The subscription aborts on unload; nothing to report.
+      });
     }
 
     console.log(
