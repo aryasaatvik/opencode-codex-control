@@ -10,7 +10,8 @@
     "skipLibCheck": true,
     "noEmit": true,
     "resolveJsonModule": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["index.ts", "src", "scripts", "test"]
+  "include": ["index.ts", "src", "scripts", "test", "*.config.ts"]
 }

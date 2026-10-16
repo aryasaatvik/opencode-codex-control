@@ -216,9 +216,7 @@ export const findComputerUseTool = (name: string): ComputerUseTool | undefined =
 
 /** The `node_repl` program that performs one Computer Use call. */
 export const computerUseProgram = (tool: ComputerUseTool, args: unknown): string => {
-  const call = tool.takesArgs
-    ? `sky.${tool.method}(${jsLiteral(args)})`
-    : `sky.${tool.method}()`;
+  const call = tool.takesArgs ? `sky.${tool.method}(${jsLiteral(args)})` : `sky.${tool.method}()`;
   return [
     `globalThis.sky ??= (await import("@oai/sky")).sky;`,
     writeJsonResult([], `await ${call}`),

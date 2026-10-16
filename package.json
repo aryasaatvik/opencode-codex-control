@@ -3,28 +3,24 @@
   "name": "opencode-codex-control",
   "version": "0.1.0",
   "description": "OpenCode plugin that exposes Codex Computer Use and Chrome as native tools",
-  "type": "module",
-  "license": "MIT",
-  "author": "Saatvik Arya",
+  "keywords": [
+    "browser-automation",
+    "chrome",
+    "codex",
+    "computer-use",
+    "desktop-automation",
+    "opencode",
+    "opencode-plugin"
+  ],
   "homepage": "https://github.com/aryasaatvik/opencode-codex-control#readme",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/aryasaatvik/opencode-codex-control.git"
-  },
   "bugs": {
     "url": "https://github.com/aryasaatvik/opencode-codex-control/issues"
   },
-  "keywords": [
-    "opencode",
-    "opencode-plugin",
-    "codex",
-    "computer-use",
-    "chrome",
-    "desktop-automation",
-    "browser-automation"
-  ],
-  "exports": {
-    ".": "./index.ts"
+  "license": "MIT",
+  "author": "Saatvik Arya",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aryasaatvik/opencode-codex-control.git"
   },
   "files": [
     "index.ts",
@@ -34,24 +30,36 @@
     "LICENSE-EXECUTOR",
     "NOTICE"
   ],
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  },
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org"
   },
   "scripts": {
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun run test",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "lint": "oxlint --deny-warnings .",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "test:artifact": "bun scripts/test-artifact.ts",
     "smoke": "bun scripts/smoke.ts",
     "tegami": "bun scripts/tegami.mts",
-    "version:packages": "bun run tegami version",
-    "release:check": "bun run typecheck && bun test",
-    "release": "bun run release:check && bun run tegami publish"
+    "release:version": "bun run tegami version",
+    "release:publish": "bun run tegami publish",
+    "release:check": "bun run check && bun run test:artifact"
   },
   "devDependencies": {
     "@opencode/plugin": "0.0.0-beta-19425",
     "@types/bun": "1.3.9",
     "@types/node": "24.12.2",
+    "oxfmt": "0.43.0",
+    "oxlint": "1.57.0",
     "tegami": "1.4.0",
     "typescript": "5.8.2"
-  }
+  },
+  "packageManager": "bun@1.4.2"
 }

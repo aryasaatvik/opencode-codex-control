@@ -13,12 +13,7 @@
 import type { Plugin as PluginNamespace } from "@opencode/plugin";
 
 import { resolveCodexHome } from "./codex/install";
-import {
-  CHROME_NAMESPACE,
-  COMPUTER_USE_NAMESPACE,
-  Controller,
-  readSettings,
-} from "./controller";
+import { CHROME_NAMESPACE, COMPUTER_USE_NAMESPACE, Controller, readSettings } from "./controller";
 import { watchTurnEnd } from "./lifecycle";
 import { CHROME_TOOLS } from "./tools/chrome";
 import { COMPUTER_USE_TOOLS } from "./tools/computer-use";
