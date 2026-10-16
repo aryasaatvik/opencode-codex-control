@@ -25,7 +25,7 @@ export interface CodexPermission {
  * every host, so granting them once in Codex covers this plugin too.
  */
 export const CODEX_PERMISSIONS: Readonly<Record<string, readonly CodexPermission[]>> = {
-  "computer_use": [
+  computer_use: [
     {
       id: "screen-recording",
       label: "Screen Recording",
@@ -41,7 +41,7 @@ export const CODEX_PERMISSIONS: Readonly<Record<string, readonly CodexPermission
       settingsUrl: settingsUrl("Privacy_Accessibility"),
     },
   ],
-  "browser": [
+  browser: [
     {
       id: "automation",
       label: "Automation",

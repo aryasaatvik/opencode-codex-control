@@ -62,9 +62,13 @@ describe("turn-end lifecycle", () => {
 
   test("ends when the event stream ends and never releases without an event", async () => {
     let releases = 0;
-    await watchTurnEnd(stream([]), async () => {
-      releases += 1;
-    }, () => {});
+    await watchTurnEnd(
+      stream([]),
+      async () => {
+        releases += 1;
+      },
+      () => {},
+    );
     expect(releases).toBe(0);
   });
 });

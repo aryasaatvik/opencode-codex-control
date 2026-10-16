@@ -220,8 +220,7 @@ export const CHROME_TOOLS: readonly ChromeTool[] = [
   },
   {
     name: "scroll",
-    description:
-      "Scroll an element, or a viewport point, in a direction by a number of pages.",
+    description: "Scroll an element, or a viewport point, in a direction by a number of pages.",
     inputSchema: object(
       {
         tab_id: TAB_ID,
@@ -288,7 +287,11 @@ export const CHROME_TOOLS: readonly ChromeTool[] = [
     name: "perform_secondary_action",
     description: `Invoke an additional accessibility action an element exposes, by name — the actions listed alongside it in \`read_page\`. ${REAL_BROWSER}`,
     inputSchema: object(
-      { tab_id: TAB_ID, element_index: ELEMENT_INDEX, action: str("Name of the action to perform.") },
+      {
+        tab_id: TAB_ID,
+        element_index: ELEMENT_INDEX,
+        action: str("Name of the action to perform."),
+      },
       ["element_index", "action"],
     ),
     needsTab: true,
@@ -308,8 +311,7 @@ export const CHROME_TOOLS: readonly ChromeTool[] = [
       ["from_x", "from_y", "to_x", "to_y"],
     ),
     needsTab: true,
-    expression:
-      "await __tab.ax.drag([__args.from_x, __args.from_y], [__args.to_x, __args.to_y])",
+    expression: "await __tab.ax.drag([__args.from_x, __args.from_y], [__args.to_x, __args.to_y])",
   },
   {
     name: "find_elements",
@@ -397,11 +399,7 @@ const TAB_PREAMBLE = [
 ].join("\n");
 
 /** The `node_repl` program that performs one Chrome call. */
-export const chromeProgram = (
-  tool: ChromeTool,
-  args: unknown,
-  modulePath: string,
-): string =>
+export const chromeProgram = (tool: ChromeTool, args: unknown, modulePath: string): string =>
   [
     runtimePreamble(modulePath),
     writeJsonResult(

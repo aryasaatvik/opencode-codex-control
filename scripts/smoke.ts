@@ -34,9 +34,11 @@ const fakeContext = {
   },
 };
 
-const cleanup = await (plugin as unknown as {
-  setup(ctx: unknown): Promise<(() => Promise<void>) | void>;
-}).setup(fakeContext);
+const cleanup = await (
+  plugin as unknown as {
+    setup(ctx: unknown): Promise<(() => Promise<void>) | void>;
+  }
+).setup(fakeContext);
 
 console.log("namespaces:", namespaces);
 console.log(
@@ -44,9 +46,7 @@ console.log(
   tools.map((tool) => `${tool.options?.namespace ?? "?"}:${tool.name}`).join(", "),
 );
 
-const byId = new Map(
-  tools.map((tool) => [`${tool.options?.namespace ?? "?"}:${tool.name}`, tool]),
-);
+const byId = new Map(tools.map((tool) => [`${tool.options?.namespace ?? "?"}:${tool.name}`, tool]));
 
 const call = async (id: string, input: unknown): Promise<string> => {
   const tool = byId.get(id);
