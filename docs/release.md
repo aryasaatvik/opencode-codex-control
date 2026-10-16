@@ -29,7 +29,7 @@ Start from a clean, current `dev` branch with GitHub CLI authentication:
 
 ```sh
 bun install --frozen-lockfile
-GH_TOKEN="$(gh auth token)" bun run version:packages
+GH_TOKEN="$(gh auth token)" bun run release:version
 ```
 
 Tegami consumes the pending entries, updates `package.json` and `CHANGELOG.md`,
@@ -40,11 +40,16 @@ publishing.
 ## Publish
 
 After the version pull request is merged, the `publish.yml` workflow runs from
-the clean merged `dev` branch, runs the release checks, and then runs:
+the clean merged `dev` branch, runs:
 
 ```sh
 bun run release:check && bun run tegami ci
 ```
+
+`afterPreflight` in the Tegami configuration runs `release:check` before any
+package marked for publication reaches npm, tags, or GitHub Releases. This also
+gates direct `bun run release:publish` and `bun run tegami ci` calls. Status and
+dry-run preflights may run the same checks.
 
 The workflow grants GitHub's OIDC token to npm and has no `NPM_TOKEN` secret.
 Tegami publishes the package, creates and pushes the `v<version>` Git tag, and

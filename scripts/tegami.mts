@@ -2,6 +2,8 @@ import { tegami, type TegamiPlugin } from "tegami";
 import { runCli } from "tegami/cli";
 import { github } from "tegami/plugins/github";
 
+import { releaseChecks } from "./release-checks.mts";
+
 import rootPackage from "../package.json" with { type: "json" };
 
 const REPOSITORY = "aryasaatvik/opencode-codex-control";
@@ -35,6 +37,7 @@ const paper = tegami({
     "opencode-codex-control": {},
   },
   plugins: [
+    releaseChecks(),
     github({
       repo: REPOSITORY,
       pushTags: true,
