@@ -1,0 +1,11 @@
+core:changelogs:
+  - content: "---\npackages:\n  opencode-codex-control:\n    type: minor\n---\n\n## Show screenshots and release control sessions\n\n- Show Computer Use and Chrome screenshots as image content in OpenCode.\n- Release Codex control sessions when an OpenCode turn succeeds, fails, is interrupted, or becomes idle. Use `computer_use.stop` to release both surfaces early.\n- Retry failed session cleanup with bounded work.\n\n## Fix Chrome coordinate targets\n\n- Send `[x, y]` coordinate tuples for Chrome clicks, scrolling, and drag endpoints.\n- Reject incomplete click and scroll targets instead of acting at an unintended zero coordinate.\n- Clarify the scroll coordinate requirements and document the stop tool.\n"
+    filename: 0.2.0.md
+    v: 0.0.0
+core:packages:
+  - changelogIds:
+      - 0.2.0.md
+    id: npm:opencode-codex-control
+    updated: true
+npm:packages:
+  - id: npm:opencode-codex-control
