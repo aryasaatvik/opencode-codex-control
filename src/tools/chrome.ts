@@ -225,8 +225,8 @@ export const CHROME_TOOLS: readonly ChromeTool[] = [
       {
         tab_id: TAB_ID,
         element_index: ELEMENT_INDEX,
-        x: num("X coordinate to scroll at, when not targeting an element. Defaults to 0."),
-        y: num("Y coordinate to scroll at, when not targeting an element. Defaults to 0."),
+        x: num("X coordinate to scroll at. Provide both x and y when not targeting an element."),
+        y: num("Y coordinate to scroll at. Provide both x and y when not targeting an element."),
         direction: {
           type: "string",
           enum: ["up", "down", "left", "right"],

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "opencode-codex-control",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OpenCode plugin that exposes Codex Computer Use and Chrome as native tools",
   "keywords": [
     "browser-automation",

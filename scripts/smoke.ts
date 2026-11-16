@@ -15,6 +15,24 @@ interface RegisteredTool {
   execute(input: unknown, context: unknown): Promise<{ content?: unknown }>;
 }
 
+// An event stream that stays open until the plugin unloads. The plugin
+// subscribes for turn-end events and then forgets about it; only the returned
+// cleanup's abort ends the stream, which is what unblocks `setup`'s watcher.
+const eventStream = (options: {
+  readonly signal: AbortSignal;
+}): AsyncIterable<{ readonly type: string }> => ({
+  [Symbol.asyncIterator]: (): AsyncIterator<{ readonly type: string }> => ({
+    next: async () => {
+      if (!options.signal.aborted) {
+        await new Promise<void>((resolve) =>
+          options.signal.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      }
+      return { done: true, value: undefined };
+    },
+  }),
+});
+
 const namespaces: unknown[] = [];
 const tools: RegisteredTool[] = [];
 
@@ -31,6 +49,9 @@ const fakeContext = {
         remove: () => undefined,
       });
     },
+  },
+  event: {
+    subscribe: eventStream,
   },
 };
 
@@ -55,11 +76,40 @@ const call = async (id: string, input: unknown): Promise<string> => {
   return typeof result.content === "string" ? result.content : JSON.stringify(result);
 };
 
-const apps = await call("computer_use:list_apps", {});
-console.log("\ncomputer_use:list_apps ->", apps.slice(0, 240));
+// Count entries without echoing app names, tab URLs, or other user state.
+const count = (text: string): string => {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (Array.isArray(parsed)) return `${parsed.length} entries`;
+  } catch {
+    // Not JSON; fall back to the line count below.
+  }
+  return `${text.split("\n").filter((line) => line.trim() !== "").length} lines`;
+};
 
-const tabs = await call("chrome:list_tabs", {});
-console.log("\nchrome:list_tabs ->", tabs.slice(0, 240));
+const STOP_RESPONSE = "Released the Codex control sessions for this turn.";
 
-await cleanup?.();
+let stop: string | undefined;
+try {
+  try {
+    const apps = await call("computer_use:list_apps", {});
+    console.log("\ncomputer_use:list_apps ->", count(apps));
+
+    const tabs = await call("chrome:list_tabs", {});
+    console.log("chrome:list_tabs ->", count(tabs));
+  } finally {
+    // Release explicitly, the way a caller should, even if a list call fails;
+    // the turn-end watcher covers the implicit path.
+    stop = await call("computer_use:stop", {});
+    console.log("computer_use:stop ->", stop);
+  }
+
+  // Hold the plugin to the response it documents.
+  if (stop !== STOP_RESPONSE) {
+    throw new Error(`unexpected computer_use:stop response: ${stop}`);
+  }
+} finally {
+  await cleanup?.();
+}
+
 console.log("\nsmoke ok");
